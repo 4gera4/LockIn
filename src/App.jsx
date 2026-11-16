@@ -2169,11 +2169,24 @@ const App = () => {
           </nav>
 
           {/* Блок аккаунта (Вход / Регистрация) */}
+{/* Блок аккаунта с возможностью смены имени */}
           <div className="flex items-center gap-2">
             {authUser ? (
               <div className="flex items-center gap-2 bg-zinc-900/80 border border-zinc-800 px-3 py-1.5 rounded-xl text-xs">
                 <User className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="text-zinc-200">{profile.username}</span>
+                <input
+                  type="text"
+                  value={profile.username}
+                  onChange={async (e) => {
+                    const newName = e.target.value;
+                    setProfile((prev) => ({ ...prev, username: newName }));
+                    if (supabase && effectiveUserId) {
+                      await supabase.from('profiles').update({ username: newName }).eq('id', effectiveUserId);
+                    }
+                  }}
+                  className="bg-transparent text-zinc-200 focus:outline-none focus:border-b border-emerald-500 w-24 font-medium"
+                  title="Нажмите, чтобы изменить имя"
+                />
                 <button onClick={handleSignOut} className="text-zinc-500 hover:text-red-400 ml-1" title="Выйти из аккаунта">
                   <LogOut className="w-3.5 h-3.5" />
                 </button>
