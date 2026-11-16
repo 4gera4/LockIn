@@ -1,14 +1,128 @@
 @import "tailwindcss";
 
+/* Палитра Catppuccin Macchiato: переопределяем шкалы Tailwind, разметка не меняется */
+@theme {
+  --color-zinc-50: #cad3f5;
+  --color-zinc-100: #cad3f5;
+  --color-zinc-200: #b8c0e0;
+  --color-zinc-300: #a5adcb;
+  --color-zinc-400: #939ab7;
+  --color-zinc-500: #8087a2;
+  --color-zinc-600: #6e738d;
+  --color-zinc-700: #494d64;
+  --color-zinc-800: #363a4f;
+  --color-zinc-900: #24273a;
+  --color-zinc-950: #1e2030;
+
+  --color-emerald-100: #e0f4d8;
+  --color-emerald-200: #cdeec2;
+  --color-emerald-300: #b7e4a8;
+  --color-emerald-400: #a6da95;
+  --color-emerald-500: #8bc57b;
+  --color-emerald-600: #4f8f4a;
+  --color-emerald-700: #3f7a3f;
+  --color-emerald-900: #2f4a2d;
+  --color-emerald-950: #1f2f21;
+
+  --color-amber-100: #f9efd6;
+  --color-amber-200: #f4e2b8;
+  --color-amber-300: #eed49f;
+  --color-amber-400: #f0c58a;
+  --color-amber-500: #f5a97f;
+  --color-amber-900: #5a3a2a;
+  --color-amber-950: #2f2320;
+
+  --color-red-400: #ed8796;
+  --color-red-500: #ed8796;
+  --color-red-600: #d56a7c;
+  --color-red-900: #5a2c38;
+  --color-red-950: #2f1c24;
+
+  --color-indigo-400: #8aadf4;
+}
+
 * {
   box-sizing: border-box;
 }
 
 body {
-  background-color: #08090c;
-  color: #d4d4d4;
+  background-color: #181926;
+  background-image:
+    radial-gradient(1100px 600px at 50% -10%, rgba(138, 173, 244, 0.07), transparent 70%),
+    radial-gradient(900px 500px at 100% 100%, rgba(166, 218, 149, 0.05), transparent 70%);
+  background-attachment: fixed;
+  color: #cad3f5;
   margin: 0;
   padding: 0;
   overflow-x: hidden;
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
+
+::selection {
+  background: rgba(166, 218, 149, 0.28);
+}
+
+/* Зернистость поверх всего: прячет «ступеньки» в градиентах (дизеринг) */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n' x='0' y='0' width='100%25' height='100%25'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1.4 -0.2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+}
+
+/* Аврора: три мягких пятна без границ (градиент, а не размытие), медленно плывут, оттенок зависит от вкладки */
+@property --a1 { syntax: '<color>'; inherits: true; initial-value: #a6da95; }
+@property --a2 { syntax: '<color>'; inherits: true; initial-value: #8bd5ca; }
+@property --a3 { syntax: '<color>'; inherits: true; initial-value: #8aadf4; }
+.aurora {
+  --a1: #a6da95;
+  --a2: #8bd5ca;
+  --a3: #8aadf4;
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  overflow: hidden;
+  pointer-events: none;
+  transition: --a1 2.5s ease, --a2 2.5s ease, --a3 2.5s ease;
+}
+.aurora[data-tab="rest"]   { --a1: #f5a97f; --a2: #eed49f; --a3: #f5bde6; }
+.aurora[data-tab="garden"] { --a1: #8aadf4; --a2: #c6a0f6; --a3: #8bd5ca; }
+.aurora[data-tab="goals"]  { --a1: #8aadf4; --a2: #7dc4e4; --a3: #a6da95; }
+.aurora i {
+  position: absolute;
+  width: 70vmax;
+  height: 70vmax;
+  border-radius: 50%;
+  opacity: var(--o);
+  transition: opacity 1.5s ease;
+  will-change: transform;
+}
+.aurora i:nth-child(1) { --o: 0.3; --c: var(--a1); top: -30vmax; left: -20vmax; animation: auroraDrift1 38s ease-in-out infinite alternate; }
+.aurora i:nth-child(2) { --o: 0.3; --c: var(--a2); bottom: -35vmax; right: -25vmax; animation: auroraDrift2 46s ease-in-out infinite alternate; }
+.aurora i:nth-child(3) { --c: var(--a3); top: 20vh; left: 25vw; width: 50vmax; height: 50vmax; --o: 0.18; animation: auroraDrift3 54s ease-in-out infinite alternate; }
+.aurora i {
+  background: radial-gradient(closest-side,
+    color-mix(in srgb, var(--c) 100%, transparent) 0%,
+    color-mix(in srgb, var(--c) 72%, transparent) 18%,
+    color-mix(in srgb, var(--c) 46%, transparent) 36%,
+    color-mix(in srgb, var(--c) 26%, transparent) 54%,
+    color-mix(in srgb, var(--c) 11%, transparent) 72%,
+    color-mix(in srgb, var(--c) 3%, transparent) 88%,
+    transparent 100%);
+}
+@keyframes auroraDrift1 { to { transform: translate(18vw, 14vh) scale(1.15); } }
+@keyframes auroraDrift2 { to { transform: translate(-16vw, -12vh) scale(1.1); } }
+@keyframes auroraDrift3 { to { transform: translate(-14vw, 10vh) scale(0.9); } }
+@media (prefers-reduced-motion: reduce) { .aurora i { animation: none; } }
+
+/* Сад на всю ширину экрана: по бокам краёв нет, сверху и снизу плавное растворение */
+.garden-canvas {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 64px, #000 calc(100% - 64px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 64px, #000 calc(100% - 64px), transparent 100%);
+}
+
+/* Ночь: аврора почти гаснет */
+body.night .aurora i { opacity: calc(var(--o) * 0.22); }

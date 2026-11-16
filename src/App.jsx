@@ -12,6 +12,45 @@ import {
 const FALLBACK_SUPABASE_URL = ""; 
 const FALLBACK_SUPABASE_KEY = ""; 
 
+// Свечение без границ: радиальный градиент с плавным затуханием до полной прозрачности
+function softGlow(hex, strength = 1) {
+  const stops = [[0, 1], [18, 0.72], [36, 0.46], [54, 0.26], [72, 0.11], [88, 0.03], [100, 0]];
+  const a = (v) => Math.round(v * 255).toString(16).padStart(2, '0');
+  return `radial-gradient(closest-side, ${stops.map(([p, v]) => `${hex}${a(v * strength)} ${p}%`).join(', ')})`;
+}
+
+// Мягкое свечение светлячка: рисуем один раз и переиспользуем (быстро и без «колец»)
+const glowSprites = {};
+function getGlowSprite(rgb) {
+  if (!glowSprites[rgb]) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    for (let i = 0; i <= 10; i++) {
+      const t = i / 10;
+      grad.addColorStop(t, `rgba(${rgb}, ${Math.pow(1 - t, 2.2).toFixed(3)})`);
+    }
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 64, 64);
+    glowSprites[rgb] = c;
+  }
+  return glowSprites[rgb];
+}
+
+// Плавный градиент: много промежуточных точек с кривой smoothstep, чтобы не было видно «колец»
+function addEasedStops(grad, from, to, steps = 12) {
+  const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const a = hex(from);
+  const b = hex(to);
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const e = t * t * (3 - 2 * t);
+    const c = a.map((v, k) => Math.round(v + (b[k] - v) * e));
+    grad.addColorStop(t, `rgb(${c[0]}, ${c[1]}, ${c[2]})`);
+  }
+}
+
 const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL || FALLBACK_SUPABASE_URL;
 const supabaseKey = import.meta.env?.VITE_SUPABASE_ANON_KEY || FALLBACK_SUPABASE_KEY;
 
@@ -21,12 +60,12 @@ const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supaba
 // 2. ЭВОЛЮЦИЯ РАСТЕНИЙ (6 БОТАНИЧЕСКИХ СТУПЕНЕЙ ОТ РОСТКА ДО ВЕКОВОГО ДУБА)
 // ============================================================================
 const PLANT_STAGES = [
-  { id: 'sprout', name: 'Росток росы', thresholdLabel: '< 5 мин', minSeconds: 0, color: '#6ee7b7', scale: 0.72, interactRadius: 36 },
-  { id: 'clover', name: 'Четырёхлистный клевер', thresholdLabel: '5 – 30 мин', minSeconds: 5 * 60, color: '#34d399', scale: 0.85, interactRadius: 40 },
-  { id: 'buttercup', name: 'Полевой лютик', thresholdLabel: '30 мин – 2 ч', minSeconds: 30 * 60, color: '#fbbf24', scale: 0.98, interactRadius: 44 },
-  { id: 'lotus', name: 'Сияющий лотос', thresholdLabel: '2 – 20 ч', minSeconds: 2 * 3600, color: '#f472b6', scale: 1.15, interactRadius: 50 },
-  { id: 'pine', name: 'Северная сосна', thresholdLabel: '20 – 100 ч', minSeconds: 20 * 3600, color: '#10b981', scale: 1.5, interactRadius: 60 },
-  { id: 'oak', name: 'Вековой дуб', thresholdLabel: '100+ ч', minSeconds: 100 * 3600, color: '#fde047', scale: 1.95, interactRadius: 78 }
+  { id: 'sprout', name: 'Росток росы', thresholdLabel: '< 5 мин', minSeconds: 0, color: '#cdeec2', scale: 0.72, interactRadius: 36 },
+  { id: 'clover', name: 'Четырёхлистный клевер', thresholdLabel: '5 – 30 мин', minSeconds: 5 * 60, color: '#b7e4a8', scale: 0.85, interactRadius: 40 },
+  { id: 'buttercup', name: 'Полевой лютик', thresholdLabel: '30 мин – 2 ч', minSeconds: 30 * 60, color: '#eed49f', scale: 0.98, interactRadius: 44 },
+  { id: 'lotus', name: 'Сияющий лотос', thresholdLabel: '2 – 20 ч', minSeconds: 2 * 3600, color: '#f5bde6', scale: 1.15, interactRadius: 50 },
+  { id: 'pine', name: 'Северная сосна', thresholdLabel: '20 – 100 ч', minSeconds: 20 * 3600, color: '#a6da95', scale: 1.5, interactRadius: 60 },
+  { id: 'oak', name: 'Вековой дуб', thresholdLabel: '100+ ч', minSeconds: 100 * 3600, color: '#f4dba6', scale: 1.95, interactRadius: 78 }
 ];
 
 const getPlantStage = (totalSeconds) => {
@@ -63,116 +102,116 @@ const DetailedPlantSVG = ({ stageKey = 'sprout', isFocusing = false, isPaused = 
       }}
     >
       <div
-        className={`absolute inset-4 rounded-full blur-3xl pointer-events-none transition-all duration-1000 ${isFocusing && !isPaused ? 'opacity-30 scale-110' : 'opacity-15 scale-95'}`}
-        style={{ backgroundColor: isWithered ? '#52525b' : isPaused ? '#f59e0b' : stageObj.color }}
+        className={`absolute -inset-4 pointer-events-none transition-all duration-1000 ${isFocusing && !isPaused ? 'opacity-50 scale-110' : 'opacity-30 scale-95'}`}
+        style={{ background: softGlow(isWithered ? '#52525b' : isPaused ? '#f5a97f' : stageObj.color) }}
       />
       <svg viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full overflow-visible">
         <defs>
           <linearGradient id={`soil-${uid}`} x1="120" y1="194" x2="120" y2="225" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#1e293b" />
-            <stop offset="55%" stopColor="#0f172a" />
+            <stop offset="0%" stopColor="#363a4f" />
+            <stop offset="55%" stopColor="#1e2030" />
             <stop offset="100%" stopColor="#06090e" />
           </linearGradient>
           <linearGradient id={`moss-${uid}`} x1="70" y1="192" x2="170" y2="212" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#065f46" />
-            <stop offset="50%" stopColor="#047857" />
-            <stop offset="100%" stopColor="#064e3b" />
+            <stop offset="0%" stopColor="#4c7c45" />
+            <stop offset="50%" stopColor="#5a9450" />
+            <stop offset="100%" stopColor="#3b5e36" />
           </linearGradient>
           <linearGradient id={`stem-${uid}`} x1="120" y1="205" x2="120" y2="85" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#065f46" />
-            <stop offset="45%" stopColor="#10b981" />
-            <stop offset="100%" stopColor="#6ee7b7" />
+            <stop offset="0%" stopColor="#4c7c45" />
+            <stop offset="45%" stopColor="#a6da95" />
+            <stop offset="100%" stopColor="#cdeec2" />
           </linearGradient>
           <linearGradient id={`leaf-lit-${uid}`} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#a7f3d0" />
-            <stop offset="45%" stopColor="#34d399" />
-            <stop offset="100%" stopColor="#059669" />
+            <stop offset="0%" stopColor="#dcf3d3" />
+            <stop offset="45%" stopColor="#b7e4a8" />
+            <stop offset="100%" stopColor="#7ab36a" />
           </linearGradient>
           <linearGradient id={`leaf-deep-${uid}`} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#34d399" />
-            <stop offset="60%" stopColor="#059669" />
-            <stop offset="100%" stopColor="#064e3b" />
+            <stop offset="0%" stopColor="#b7e4a8" />
+            <stop offset="60%" stopColor="#7ab36a" />
+            <stop offset="100%" stopColor="#3b5e36" />
           </linearGradient>
           <radialGradient id={`dew-${uid}`} cx="35%" cy="30%" r="70%">
             <stop offset="0%" stopColor="#ffffff" />
-            <stop offset="40%" stopColor="#bae6fd" stopOpacity="0.9" />
+            <stop offset="40%" stopColor="#b7e0f0" stopOpacity="0.9" />
             <stop offset="100%" stopColor="#0284c7" stopOpacity="0.65" />
           </radialGradient>
           <radialGradient id={`buttercup-petal-${uid}`} cx="50%" cy="65%" r="65%">
-            <stop offset="0%" stopColor="#d97706" />
-            <stop offset="45%" stopColor="#f59e0b" />
-            <stop offset="85%" stopColor="#fde047" />
-            <stop offset="100%" stopColor="#fef9c3" />
+            <stop offset="0%" stopColor="#f5a97f" />
+            <stop offset="45%" stopColor="#f5a97f" />
+            <stop offset="85%" stopColor="#f4dba6" />
+            <stop offset="100%" stopColor="#fbf3dc" />
           </radialGradient>
           <linearGradient id={`lotus-outer-${uid}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#a5f3fc" />
-            <stop offset="28%" stopColor="#f472b6" />
-            <stop offset="75%" stopColor="#db2777" />
+            <stop offset="0%" stopColor="#91d7e3" />
+            <stop offset="28%" stopColor="#f5bde6" />
+            <stop offset="75%" stopColor="#e08fc0" />
             <stop offset="100%" stopColor="#831843" />
           </linearGradient>
           <linearGradient id={`lotus-inner-${uid}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#ffffff" />
-            <stop offset="25%" stopColor="#fbcfe8" />
-            <stop offset="70%" stopColor="#ec4899" />
-            <stop offset="100%" stopColor="#9d174d" />
+            <stop offset="25%" stopColor="#f5d4ec" />
+            <stop offset="70%" stopColor="#f5bde6" />
+            <stop offset="100%" stopColor="#9a3f6e" />
           </linearGradient>
           <radialGradient id={`lotus-core-${uid}`} cx="50%" cy="45%" r="55%">
-            <stop offset="0%" stopColor="#fef08a" />
-            <stop offset="60%" stopColor="#f59e0b" />
-            <stop offset="100%" stopColor="#b45309" />
+            <stop offset="0%" stopColor="#f9e8c0" />
+            <stop offset="60%" stopColor="#f5a97f" />
+            <stop offset="100%" stopColor="#c98462" />
           </radialGradient>
           <linearGradient id={`lilypad-${uid}`} x1="60" y1="190" x2="180" y2="215" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#10b981" />
-            <stop offset="55%" stopColor="#047857" />
-            <stop offset="100%" stopColor="#064e3b" />
+            <stop offset="0%" stopColor="#a6da95" />
+            <stop offset="55%" stopColor="#5a9450" />
+            <stop offset="100%" stopColor="#3b5e36" />
           </linearGradient>
           <linearGradient id={`bark-${uid}`} x1="95" y1="100" x2="145" y2="205" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#9a3412" />
-            <stop offset="45%" stopColor="#78350f" />
+            <stop offset="0%" stopColor="#a65a3a" />
+            <stop offset="45%" stopColor="#8a5a44" />
             <stop offset="100%" stopColor="#3b1908" />
           </linearGradient>
           <linearGradient id={`oak-bark-${uid}`} x1="85" y1="90" x2="155" y2="210" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#a16207" />
+            <stop offset="0%" stopColor="#b08a4a" />
             <stop offset="35%" stopColor="#713f12" />
             <stop offset="75%" stopColor="#422006" />
-            <stop offset="100%" stopColor="#271203" />
+            <stop offset="100%" stopColor="#2b2230" />
           </linearGradient>
           <linearGradient id={`pine-top-${uid}`} x1="120" y1="26" x2="120" y2="95" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#a7f3d0" />
-            <stop offset="45%" stopColor="#10b981" />
-            <stop offset="100%" stopColor="#065f46" />
+            <stop offset="0%" stopColor="#dcf3d3" />
+            <stop offset="45%" stopColor="#a6da95" />
+            <stop offset="100%" stopColor="#4c7c45" />
           </linearGradient>
           <linearGradient id={`pine-mid-${uid}`} x1="120" y1="65" x2="120" y2="145" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#34d399" />
-            <stop offset="55%" stopColor="#059669" />
-            <stop offset="100%" stopColor="#064e3b" />
+            <stop offset="0%" stopColor="#b7e4a8" />
+            <stop offset="55%" stopColor="#7ab36a" />
+            <stop offset="100%" stopColor="#3b5e36" />
           </linearGradient>
           <linearGradient id={`pine-low-${uid}`} x1="120" y1="110" x2="120" y2="180" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#10b981" />
-            <stop offset="60%" stopColor="#047857" />
-            <stop offset="100%" stopColor="#022c22" />
+            <stop offset="0%" stopColor="#a6da95" />
+            <stop offset="60%" stopColor="#5a9450" />
+            <stop offset="100%" stopColor="#24382a" />
           </linearGradient>
           <radialGradient id={`oak-canopy-sun-${uid}`} cx="40%" cy="30%" r="65%">
-            <stop offset="0%" stopColor="#bef264" />
-            <stop offset="35%" stopColor="#34d399" />
-            <stop offset="75%" stopColor="#059669" />
-            <stop offset="100%" stopColor="#064e3b" />
+            <stop offset="0%" stopColor="#c8e8a0" />
+            <stop offset="35%" stopColor="#b7e4a8" />
+            <stop offset="75%" stopColor="#7ab36a" />
+            <stop offset="100%" stopColor="#3b5e36" />
           </radialGradient>
           <radialGradient id={`oak-canopy-mid-${uid}`} cx="50%" cy="35%" r="65%">
-            <stop offset="0%" stopColor="#6ee7b7" />
-            <stop offset="45%" stopColor="#10b981" />
-            <stop offset="85%" stopColor="#047857" />
-            <stop offset="100%" stopColor="#022c22" />
+            <stop offset="0%" stopColor="#cdeec2" />
+            <stop offset="45%" stopColor="#a6da95" />
+            <stop offset="85%" stopColor="#5a9450" />
+            <stop offset="100%" stopColor="#24382a" />
           </radialGradient>
           <radialGradient id={`oak-canopy-shade-${uid}`} cx="50%" cy="50%" r="65%">
-            <stop offset="0%" stopColor="#059669" />
-            <stop offset="65%" stopColor="#064e3b" />
-            <stop offset="100%" stopColor="#022c22" />
+            <stop offset="0%" stopColor="#7ab36a" />
+            <stop offset="65%" stopColor="#3b5e36" />
+            <stop offset="100%" stopColor="#24382a" />
           </radialGradient>
           <radialGradient id={`hollow-glow-${uid}`} cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#fef08a" />
-            <stop offset="55%" stopColor="#f59e0b" />
-            <stop offset="100%" stopColor="#451a03" />
+            <stop offset="0%" stopColor="#f9e8c0" />
+            <stop offset="55%" stopColor="#f5a97f" />
+            <stop offset="100%" stopColor="#3a2a22" />
           </radialGradient>
         </defs>
 
@@ -183,19 +222,19 @@ const DetailedPlantSVG = ({ stageKey = 'sprout', isFocusing = false, isPaused = 
               <ellipse cx="120" cy="206" rx="68" ry="14" fill="#083344" opacity="0.65" />
               <ellipse cx="120" cy="206" rx="62" ry="11.5" stroke="#38bdf8" strokeWidth="1.2" strokeOpacity="0.35" className={isFocusing && !isPaused ? 'animate-ripple-pulse' : ''} />
               <ellipse cx="120" cy="206" rx="48" ry="8.5" stroke="#67e8f9" strokeWidth="1" strokeOpacity="0.45" />
-              <path d="M120 205 L168 199 C180 203, 174 214, 146 216 C115 218, 72 216, 64 206 C58 197, 86 193, 120 194 C138 194, 154 196, 162 197 Z" fill={`url(#lilypad-${uid})`} stroke="#34d399" strokeWidth="1" strokeOpacity="0.4" />
-              <path d="M120 204 L82 201 M120 204 L94 211 M120 204 L132 213 M120 204 L152 206 M120 204 L102 196" stroke="#6ee7b7" strokeWidth="0.9" strokeOpacity="0.35" strokeLinecap="round" />
+              <path d="M120 205 L168 199 C180 203, 174 214, 146 216 C115 218, 72 216, 64 206 C58 197, 86 193, 120 194 C138 194, 154 196, 162 197 Z" fill={`url(#lilypad-${uid})`} stroke="#b7e4a8" strokeWidth="1" strokeOpacity="0.4" />
+              <path d="M120 204 L82 201 M120 204 L94 211 M120 204 L132 213 M120 204 L152 206 M120 204 L102 196" stroke="#cdeec2" strokeWidth="0.9" strokeOpacity="0.35" strokeLinecap="round" />
             </g>
           ) : (
             <g>
-              <path d={isTree ? 'M52 210 C58 192, 92 188, 120 188 C148 188, 182 192, 188 210 C172 218, 68 218, 52 210 Z' : 'M68 209 C74 195, 96 192, 120 192 C144 192, 166 195, 172 209 C156 216, 84 216, 68 209 Z'} fill={`url(#soil-${uid})`} stroke="#1e293b" strokeWidth="1.2" />
+              <path d={isTree ? 'M52 210 C58 192, 92 188, 120 188 C148 188, 182 192, 188 210 C172 218, 68 218, 52 210 Z' : 'M68 209 C74 195, 96 192, 120 192 C144 192, 166 195, 172 209 C156 216, 84 216, 68 209 Z'} fill={`url(#soil-${uid})`} stroke="#363a4f" strokeWidth="1.2" />
               <path d={isTree ? 'M64 205 C78 193, 104 191, 125 192 C148 193, 168 196, 176 205 C158 209, 82 209, 64 205 Z' : 'M78 205 C88 196, 108 195, 124 195 C140 195, 154 198, 162 205 C146 208, 94 208, 78 205 Z'} fill={`url(#moss-${uid})`} opacity={isWithered ? 0.35 : 0.9} />
               <ellipse cx={isTree ? 74 : 84} cy="207" rx="6.5" ry="3.8" fill="#334155" />
               <ellipse cx={isTree ? 73 : 83} cy="206" rx="4.5" ry="2.2" fill="#64748b" opacity="0.6" />
-              <ellipse cx={isTree ? 164 : 154} cy="208" rx="5.5" ry="3.2" fill="#1e293b" />
-              <ellipse cx="144" cy="209" rx="3.5" ry="2" fill="#475569" />
+              <ellipse cx={isTree ? 164 : 154} cy="208" rx="5.5" ry="3.2" fill="#363a4f" />
+              <ellipse cx="144" cy="209" rx="3.5" ry="2" fill="#5b6078" />
               {!isWithered && (
-                <g stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" opacity="0.75">
+                <g stroke="#a6da95" strokeWidth="1.5" strokeLinecap="round" opacity="0.75">
                   <path d="M88 203 Q84 195 81 192" />
                   <path d="M91 204 Q90 196 93 193" />
                   <path d="M150 204 Q154 196 158 193" />
@@ -208,32 +247,32 @@ const DetailedPlantSVG = ({ stageKey = 'sprout', isFocusing = false, isPaused = 
 
         {isWithered && (
           <g className="transition-all duration-700">
-            <path d="M120 202 C120 175, 126 145, 148 135 C162 128, 170 138, 166 148" stroke="#78716c" strokeWidth="4" strokeLinecap="round" />
+            <path d="M120 202 C120 175, 126 145, 148 135 C162 128, 170 138, 166 148" stroke="#6e738d" strokeWidth="4" strokeLinecap="round" />
             <path d="M126 168 C108 164, 96 172, 102 180 C108 184, 120 176, 126 168 Z" fill="#57534e" />
-            <path d="M138 148 C154 146, 164 156, 156 163 C149 167, 141 156, 138 148 Z" fill="#78716c" />
-            <ellipse cx="166" cy="152" rx="7" ry="10" transform="rotate(35 166 152)" fill="#a8a29e" />
-            <ellipse cx="105" cy="207" rx="5" ry="2.2" transform="rotate(-15 105 207)" fill="#a8a29e" opacity="0.7" />
-            <ellipse cx="136" cy="208" rx="4.5" ry="2" transform="rotate(20 136 208)" fill="#78716c" opacity="0.7" />
+            <path d="M138 148 C154 146, 164 156, 156 163 C149 167, 141 156, 138 148 Z" fill="#6e738d" />
+            <ellipse cx="166" cy="152" rx="7" ry="10" transform="rotate(35 166 152)" fill="#8087a2" />
+            <ellipse cx="105" cy="207" rx="5" ry="2.2" transform="rotate(-15 105 207)" fill="#8087a2" opacity="0.7" />
+            <ellipse cx="136" cy="208" rx="4.5" ry="2" transform="rotate(20 136 208)" fill="#6e738d" opacity="0.7" />
           </g>
         )}
 
         {stageKey === 'sprout' && (
           <g className="origin-[120px_202px] animate-sway-stem">
             <path d="M120 202 C119 178, 114 152, 120 124" stroke={`url(#stem-${uid})`} strokeWidth="4.2" strokeLinecap="round" />
-            <path d="M120 126 C117 116, 120 109, 122 106 C124 110, 124 118, 120 126 Z" fill="#a7f3d0" />
+            <path d="M120 126 C117 116, 120 109, 122 106 C124 110, 124 118, 120 126 Z" fill="#dcf3d3" />
             <g className="origin-[119px_136px] animate-sway-leaf">
               <path d="M119 136 C102 132, 82 120, 86 106 C90 94, 112 106, 119 132 Z" fill={`url(#leaf-deep-${uid})`} />
-              <path d="M118 134 C106 124, 96 116, 89 108" stroke="#a7f3d0" strokeWidth="1.3" strokeLinecap="round" strokeOpacity="0.75" />
-              <path d="M107 125 L99 124 M101 119 L94 117 M105 121 L106 114" stroke="#6ee7b7" strokeWidth="0.9" strokeLinecap="round" strokeOpacity="0.6" />
+              <path d="M118 134 C106 124, 96 116, 89 108" stroke="#dcf3d3" strokeWidth="1.3" strokeLinecap="round" strokeOpacity="0.75" />
+              <path d="M107 125 L99 124 M101 119 L94 117 M105 121 L106 114" stroke="#cdeec2" strokeWidth="0.9" strokeLinecap="round" strokeOpacity="0.6" />
             </g>
             <g className="origin-[120px_126px] animate-sway-branch">
               <path d="M120 126 C136 118, 162 108, 162 124 C162 138, 136 138, 120 126 Z" fill={`url(#leaf-lit-${uid})`} />
-              <path d="M121 126 C135 123, 148 122, 159 124" stroke="#ecfdf5" strokeWidth="1.3" strokeLinecap="round" strokeOpacity="0.8" />
-              <path d="M134 124 L139 119 M144 123 L149 119 M138 124 L143 129" stroke="#d1fae5" strokeWidth="0.9" strokeLinecap="round" strokeOpacity="0.65" />
+              <path d="M121 126 C135 123, 148 122, 159 124" stroke="#e4f6dc" strokeWidth="1.3" strokeLinecap="round" strokeOpacity="0.8" />
+              <path d="M134 124 L139 119 M144 123 L149 119 M138 124 L143 129" stroke="#d3efc8" strokeWidth="0.9" strokeLinecap="round" strokeOpacity="0.65" />
               <g className="origin-[161px_126px] animate-dew-shimmer">
                 <path d="M161 124 C161 124, 166 130, 166 134 C166 137.2, 163.8 139.5, 161 139.5 C158.2 139.5, 156 137.2, 156 134 C156 130, 161 124, 161 124 Z" fill={`url(#dew-${uid})`} />
                 <ellipse cx="159.5" cy="132.5" rx="1.4" ry="2.2" transform="rotate(-15 159.5 132.5)" fill="#ffffff" opacity="0.9" />
-                <circle cx="162.5" cy="136.5" r="0.9" fill="#e0f2fe" opacity="0.8" />
+                <circle cx="162.5" cy="136.5" r="0.9" fill="#dbe9fb" opacity="0.8" />
               </g>
             </g>
           </g>
@@ -242,35 +281,35 @@ const DetailedPlantSVG = ({ stageKey = 'sprout', isFocusing = false, isPaused = 
         {stageKey === 'clover' && (
           <g className="origin-[120px_202px] animate-sway-stem">
             <g className="origin-[98px_200px] animate-sway-leaf">
-              <path d="M104 201 C98 182, 86 164, 82 144" stroke="#059669" strokeWidth="3.2" strokeLinecap="round" />
+              <path d="M104 201 C98 182, 86 164, 82 144" stroke="#7ab36a" strokeWidth="3.2" strokeLinecap="round" />
               {[0, 120, 240].map((deg) => (
                 <g key={deg} transform={`translate(82, 144) rotate(${deg})`}>
                   <path d="M0 0 C-10 -6, -15 -18, -6 -21 C-2 -22, 0 -18, 0 -15 C0 -18, 2 -22, 6 -21 C15 -18, 10 -6, 0 0 Z" fill={`url(#leaf-deep-${uid})`} />
-                  <path d="M-4 -11 L0 -7 L4 -11" stroke="#a7f3d0" strokeWidth="1.2" strokeLinecap="round" opacity="0.65" />
+                  <path d="M-4 -11 L0 -7 L4 -11" stroke="#dcf3d3" strokeWidth="1.2" strokeLinecap="round" opacity="0.65" />
                 </g>
               ))}
-              <circle cx="82" cy="144" r="2.2" fill="#d1fae5" />
+              <circle cx="82" cy="144" r="2.2" fill="#d3efc8" />
             </g>
             <g className="origin-[138px_200px] animate-sway-branch">
-              <path d="M134 201 C142 184, 152 168, 158 150" stroke="#059669" strokeWidth="3" strokeLinecap="round" />
+              <path d="M134 201 C142 184, 152 168, 158 150" stroke="#7ab36a" strokeWidth="3" strokeLinecap="round" />
               {[30, 150, 270].map((deg) => (
                 <g key={deg} transform={`translate(158, 150) rotate(${deg})`}>
                   <path d="M0 0 C-9 -5, -13 -16, -5 -19 C-1.5 -20, 0 -16, 0 -13.5 C0 -16, 1.5 -20, 5 -19 C13 -16, 9 -5, 0 0 Z" fill={`url(#leaf-lit-${uid})`} />
-                  <path d="M-3.5 -10 L0 -6.5 L3.5 -10" stroke="#ecfdf5" strokeWidth="1.1" strokeLinecap="round" opacity="0.7" />
+                  <path d="M-3.5 -10 L0 -6.5 L3.5 -10" stroke="#e4f6dc" strokeWidth="1.1" strokeLinecap="round" opacity="0.7" />
                 </g>
               ))}
-              <circle cx="158" cy="150" r="2" fill="#ecfdf5" />
+              <circle cx="158" cy="150" r="2" fill="#e4f6dc" />
             </g>
             <g className="origin-[120px_202px] animate-sway-canopy-slow">
               <path d="M120 202 C118 170, 115 138, 120 105" stroke={`url(#stem-${uid})`} strokeWidth="4.2" strokeLinecap="round" />
               {[0, 90, 180, 270].map((deg, idx) => (
                 <g key={deg} transform={`translate(120, 105) rotate(${deg})`}>
-                  <path d="M0 0 C-15 -8, -24 -26, -9 -31 C-3 -33, 0 -27, 0 -23 C0 -27, 3 -33, 9 -31 C24 -26, 15 -8, 0 0 Z" fill={idx % 2 === 0 ? `url(#leaf-lit-${uid})` : `url(#leaf-deep-${uid})`} stroke="#6ee7b7" strokeWidth="0.6" strokeOpacity="0.4" />
-                  <path d="M0 -2 L0 -22" stroke="#064e3b" strokeWidth="1" strokeOpacity="0.35" />
-                  <path d="M-7 -15 L0 -9 L7 -15" stroke="#d1fae5" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" opacity="0.8" />
+                  <path d="M0 0 C-15 -8, -24 -26, -9 -31 C-3 -33, 0 -27, 0 -23 C0 -27, 3 -33, 9 -31 C24 -26, 15 -8, 0 0 Z" fill={idx % 2 === 0 ? `url(#leaf-lit-${uid})` : `url(#leaf-deep-${uid})`} stroke="#cdeec2" strokeWidth="0.6" strokeOpacity="0.4" />
+                  <path d="M0 -2 L0 -22" stroke="#3b5e36" strokeWidth="1" strokeOpacity="0.35" />
+                  <path d="M-7 -15 L0 -9 L7 -15" stroke="#d3efc8" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" opacity="0.8" />
                 </g>
               ))}
-              <circle cx="120" cy="105" r="3.2" fill="#ecfdf5" />
+              <circle cx="120" cy="105" r="3.2" fill="#e4f6dc" />
               <circle cx="128" cy="86" r="3" fill={`url(#dew-${uid})`} />
               <circle cx="127" cy="85" r="1" fill="#ffffff" />
             </g>
@@ -284,30 +323,30 @@ const DetailedPlantSVG = ({ stageKey = 'sprout', isFocusing = false, isPaused = 
               <path d="M122 196 C144 188, 168 176, 172 158 C162 158, 154 164, 150 160 C154 150, 146 144, 138 154 C134 162, 126 178, 122 196 Z" fill={`url(#leaf-lit-${uid})`} />
             </g>
             <g className="origin-[120px_168px] animate-sway-branch">
-              <path d="M120 168 C138 154, 154 134, 162 108" stroke="#10b981" strokeWidth="3.2" strokeLinecap="round" />
+              <path d="M120 168 C138 154, 154 134, 162 108" stroke="#a6da95" strokeWidth="3.2" strokeLinecap="round" />
               <g transform="translate(162, 108) rotate(22)">
                 <path d="M0 2 C-10 -4, -12 -18, 0 -24 C12 -18, 10 -4, 0 2 Z" fill={`url(#buttercup-petal-${uid})`} />
-                <path d="M-5 -2 C-9 -10, -4 -20, 0 -23 C4 -20, 9 -10, 5 -2 Z" fill="#fef08a" opacity="0.85" />
-                <path d="M0 3 C-9 1, -11 -7, -6 -11 C-3 -5, -2 0, 0 3 Z" fill="#059669" />
-                <path d="M0 3 C9 1, 11 -7, 6 -11 C3 -5, 2 0, 0 3 Z" fill="#10b981" />
+                <path d="M-5 -2 C-9 -10, -4 -20, 0 -23 C4 -20, 9 -10, 5 -2 Z" fill="#f9e8c0" opacity="0.85" />
+                <path d="M0 3 C-9 1, -11 -7, -6 -11 C-3 -5, -2 0, 0 3 Z" fill="#7ab36a" />
+                <path d="M0 3 C9 1, 11 -7, 6 -11 C3 -5, 2 0, 0 3 Z" fill="#a6da95" />
               </g>
             </g>
             <g className="origin-[120px_202px] animate-sway-canopy-slow">
               <path d="M120 202 C116 164, 112 126, 114 84" stroke={`url(#stem-${uid})`} strokeWidth="4.5" strokeLinecap="round" />
               <path d="M115 142 C96 134, 84 120, 90 110 C98 112, 106 122, 115 136 Z" fill={`url(#leaf-lit-${uid})`} />
               <g transform="translate(114, 80)">
-                <circle cx="0" cy="0" r="32" fill="#fbbf24" opacity="0.16" />
+                <circle cx="0" cy="0" r="32" fill="#eed49f" opacity="0.16" />
                 {[0, 60, 120, 180, 240, 300].map((deg) => (
-                  <path key={`outer-${deg}`} d="M0 0 C-14 -8, -19 -28, 0 -30 C19 -28, 14 -8, 0 0 Z" transform={`rotate(${deg})`} fill={`url(#buttercup-petal-${uid})`} stroke="#fde047" strokeWidth="0.6" />
+                  <path key={`outer-${deg}`} d="M0 0 C-14 -8, -19 -28, 0 -30 C19 -28, 14 -8, 0 0 Z" transform={`rotate(${deg})`} fill={`url(#buttercup-petal-${uid})`} stroke="#f4dba6" strokeWidth="0.6" />
                 ))}
                 {[30, 90, 150, 210, 270, 330].map((deg) => (
                   <path key={`inner-${deg}`} d="M0 0 C-11 -6, -15 -22, 0 -24 C15 -22, 11 -6, 0 0 Z" transform={`rotate(${deg})`} fill={`url(#buttercup-petal-${uid})`} opacity="0.95" />
                 ))}
-                <circle cx="0" cy="0" r="8" fill="#d97706" />
+                <circle cx="0" cy="0" r="8" fill="#f5a97f" />
                 {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
                   <g key={`stamen-${deg}`} transform={`rotate(${deg})`}>
-                    <line x1="0" y1="-6" x2="0" y2="-12" stroke="#fef08a" strokeWidth="1.2" />
-                    <circle cx="0" cy="-12.5" r="1.8" fill="#fef9c3" />
+                    <line x1="0" y1="-6" x2="0" y2="-12" stroke="#f9e8c0" strokeWidth="1.2" />
+                    <circle cx="0" cy="-12.5" r="1.8" fill="#fbf3dc" />
                   </g>
                 ))}
                 <circle cx="0" cy="0" r="4.5" fill="#84cc16" />
@@ -318,12 +357,12 @@ const DetailedPlantSVG = ({ stageKey = 'sprout', isFocusing = false, isPaused = 
 
         {stageKey === 'lotus' && (
           <g className="origin-[120px_200px] animate-sway-stem">
-            <circle cx="120" cy="148" r="54" fill="#f472b6" opacity="0.14" />
+            <circle cx="120" cy="148" r="54" fill="#f5bde6" opacity="0.14" />
             {[-62, -36, 0, 36, 62].map((deg) => (
               <g key={`back-${deg}`} transform={`translate(120, 188) rotate(${deg})`}>
-                <path d="M0 0 C-24 -22, -28 -68, 0 -92 C28 -68, 24 -22, 0 0 Z" fill={`url(#lotus-outer-${uid})`} stroke="#fbcfe8" strokeWidth="0.7" strokeOpacity="0.6" />
-                <path d="M0 -8 L0 -84" stroke="#fdf2f8" strokeWidth="0.9" strokeOpacity="0.45" />
-                <path d="M0 -35 Q-10 -55 -8 -72 M0 -35 Q10 -55 8 -72" stroke="#fdf2f8" strokeWidth="0.6" strokeOpacity="0.35" />
+                <path d="M0 0 C-24 -22, -28 -68, 0 -92 C28 -68, 24 -22, 0 0 Z" fill={`url(#lotus-outer-${uid})`} stroke="#f5d4ec" strokeWidth="0.7" strokeOpacity="0.6" />
+                <path d="M0 -8 L0 -84" stroke="#fbeaf6" strokeWidth="0.9" strokeOpacity="0.45" />
+                <path d="M0 -35 Q-10 -55 -8 -72 M0 -35 Q10 -55 8 -72" stroke="#fbeaf6" strokeWidth="0.6" strokeOpacity="0.35" />
               </g>
             ))}
             {[-46, -20, 20, 46].map((deg) => (
@@ -336,7 +375,7 @@ const DetailedPlantSVG = ({ stageKey = 'sprout', isFocusing = false, isPaused = 
               <ellipse cx="0" cy="0" rx="18" ry="12" fill={`url(#lotus-core-${uid})`} />
               {[-28, -18, -9, 0, 9, 18, 28].map((xOff, i) => (
                 <g key={i}>
-                  <line x1={xOff * 0.6} y1="2" x2={xOff * 0.85} y2={-12 - (i % 2) * 4} stroke="#fef08a" strokeWidth="1.3" />
+                  <line x1={xOff * 0.6} y1="2" x2={xOff * 0.85} y2={-12 - (i % 2) * 4} stroke="#f9e8c0" strokeWidth="1.3" />
                   <circle cx={xOff * 0.85} cy={-13 - (i % 2) * 4} r="2" fill="#ffffff" />
                 </g>
               ))}
@@ -346,13 +385,13 @@ const DetailedPlantSVG = ({ stageKey = 'sprout', isFocusing = false, isPaused = 
                 <path d="M0 0 C-18 -14, -20 -44, 0 -62 C20 -44, 18 -14, 0 0 Z" fill={`url(#lotus-inner-${uid})`} stroke="#ffffff" strokeWidth="0.8" />
               </g>
             ))}
-            <path d="M120 196 C95 198, 76 190, 70 180 C88 182, 105 188, 120 196 Z" fill="#10b981" />
-            <path d="M120 196 C145 198, 164 190, 170 180 C152 182, 135 188, 120 196 Z" fill="#059669" />
+            <path d="M120 196 C95 198, 76 190, 70 180 C88 182, 105 188, 120 196 Z" fill="#a6da95" />
+            <path d="M120 196 C145 198, 164 190, 170 180 C152 182, 135 188, 120 196 Z" fill="#7ab36a" />
             {!isWithered && (
               <g className="animate-float-pollen">
-                <circle cx="96" cy="112" r="2.2" fill="#a5f3fc" opacity="0.85" />
-                <circle cx="144" cy="104" r="2.5" fill="#fef08a" opacity="0.9" />
-                <circle cx="120" cy="86" r="1.8" fill="#fbcfe8" opacity="0.8" />
+                <circle cx="96" cy="112" r="2.2" fill="#91d7e3" opacity="0.85" />
+                <circle cx="144" cy="104" r="2.5" fill="#f9e8c0" opacity="0.9" />
+                <circle cx="120" cy="86" r="1.8" fill="#f5d4ec" opacity="0.8" />
               </g>
             )}
           </g>
@@ -361,51 +400,51 @@ const DetailedPlantSVG = ({ stageKey = 'sprout', isFocusing = false, isPaused = 
         {stageKey === 'pine' && (
           <g className="origin-[120px_202px] animate-sway-stem">
             <path d="M96 205 C106 196, 110 175, 113 90 L127 90 C130 175, 134 196, 144 205 C132 203, 126 198, 120 202 C114 198, 108 203, 96 205 Z" fill={`url(#bark-${uid})`} />
-            <path d="M117 115 L115 192 M122 128 L124 188 M119 155 L118 198" stroke="#451a03" strokeWidth="1.5" strokeLinecap="round" opacity="0.7" />
+            <path d="M117 115 L115 192 M122 128 L124 188 M119 155 L118 198" stroke="#3a2a22" strokeWidth="1.5" strokeLinecap="round" opacity="0.7" />
             <g className="origin-[120px_140px] animate-sway-leaf">
               <path d="M120 112 C94 136, 68 154, 48 166 C66 170, 82 164, 92 172 C104 166, 114 168, 120 174 C126 168, 136 166, 148 172 C158 164, 174 170, 192 166 C172 154, 146 136, 120 112 Z" fill={`url(#pine-low-${uid})`} />
-              <ellipse cx="82" cy="168" rx="4.5" ry="7" transform="rotate(12 82 168)" fill="#78350f" stroke="#b45309" strokeWidth="0.8" />
-              <ellipse cx="158" cy="167" rx="4.5" ry="7" transform="rotate(-12 158 167)" fill="#78350f" stroke="#b45309" strokeWidth="0.8" />
+              <ellipse cx="82" cy="168" rx="4.5" ry="7" transform="rotate(12 82 168)" fill="#8a5a44" stroke="#c98462" strokeWidth="0.8" />
+              <ellipse cx="158" cy="167" rx="4.5" ry="7" transform="rotate(-12 158 167)" fill="#8a5a44" stroke="#c98462" strokeWidth="0.8" />
             </g>
             <g className="origin-[120px_115px] animate-sway-branch">
               <path d="M120 88 C96 112, 74 128, 56 140 C74 144, 88 138, 98 146 C108 140, 114 142, 120 148 C126 142, 132 140, 142 146 C152 138, 166 144, 184 140 C166 128, 144 112, 120 88 Z" fill={`url(#pine-mid-${uid})`} />
-              <path d="M72 136 L62 139 M88 138 L82 142 M152 138 L158 142 M168 136 L178 139" stroke="#6ee7b7" strokeWidth="1.6" strokeLinecap="round" opacity="0.55" />
+              <path d="M72 136 L62 139 M88 138 L82 142 M152 138 L158 142 M168 136 L178 139" stroke="#cdeec2" strokeWidth="1.6" strokeLinecap="round" opacity="0.55" />
             </g>
             <g className="origin-[120px_90px] animate-sway-canopy-slow">
               <path d="M120 64 C100 86, 82 102, 66 114 C82 117, 94 112, 102 119 C110 114, 115 116, 120 120 C125 116, 130 114, 138 119 C146 112, 158 117, 174 114 C158 102, 140 86, 120 64 Z" fill={`url(#pine-mid-${uid})`} />
-              <ellipse cx="144" cy="117" rx="3.8" ry="6" transform="rotate(-8 144 117)" fill="#78350f" stroke="#d97706" strokeWidth="0.7" />
+              <ellipse cx="144" cy="117" rx="3.8" ry="6" transform="rotate(-8 144 117)" fill="#8a5a44" stroke="#f5a97f" strokeWidth="0.7" />
             </g>
             <g className="origin-[120px_65px] animate-sway-canopy-fast">
               <path d="M120 42 C104 62, 90 76, 78 88 C90 90, 100 86, 108 92 C114 88, 117 90, 120 94 C123 90, 126 88, 132 92 C140 86, 150 90, 162 88 C150 76, 136 62, 120 42 Z" fill={`url(#pine-top-${uid})`} />
             </g>
             <g className="origin-[120px_45px] animate-sway-canopy-fast">
               <path d="M120 20 C110 38, 100 52, 90 62 C102 64, 112 60, 120 66 C128 60, 138 64, 150 62 C140 52, 130 38, 120 20 Z" fill={`url(#pine-top-${uid})`} />
-              <path d="M120 22 L106 48 M120 22 L134 48 M120 22 L120 52" stroke="#d1fae5" strokeWidth="1.4" strokeLinecap="round" opacity="0.65" />
+              <path d="M120 22 L106 48 M120 22 L134 48 M120 22 L120 52" stroke="#d3efc8" strokeWidth="1.4" strokeLinecap="round" opacity="0.65" />
             </g>
           </g>
         )}
 
         {stageKey === 'oak' && (
           <g className="origin-[120px_204px] animate-sway-stem">
-            <circle cx="120" cy="96" r="78" fill="#fbbf24" opacity="0.11" />
+            <circle cx="120" cy="96" r="78" fill="#eed49f" opacity="0.11" />
             <g className="origin-[120px_110px] animate-sway-canopy-slow">
               <circle cx="62" cy="112" r="34" fill={`url(#oak-canopy-shade-${uid})`} />
               <circle cx="178" cy="112" r="34" fill={`url(#oak-canopy-shade-${uid})`} />
               <circle cx="120" cy="64" r="42" fill={`url(#oak-canopy-shade-${uid})`} />
             </g>
             <path d="M72 206 C90 200, 98 184, 100 154 C101 134, 96 122, 74 106 L84 98 C104 112, 109 122, 112 110 L128 110 C131 122, 138 112, 158 96 L166 104 C144 120, 139 134, 140 154 C142 184, 150 200, 168 206 C152 205, 142 198, 134 204 C126 198, 114 198, 106 204 C98 198, 88 205, 72 206 Z" fill={`url(#oak-bark-${uid})`} />
-            <path d="M108 122 C106 148, 102 174, 92 198 M132 124 C134 150, 138 176, 148 198 M118 118 L116 144 M124 168 L122 198" stroke="#271203" strokeWidth="1.8" strokeLinecap="round" opacity="0.75" />
-            <ellipse cx="120" cy="156" rx="7.5" ry="11" fill="#271203" />
+            <path d="M108 122 C106 148, 102 174, 92 198 M132 124 C134 150, 138 176, 148 198 M118 118 L116 144 M124 168 L122 198" stroke="#2b2230" strokeWidth="1.8" strokeLinecap="round" opacity="0.75" />
+            <ellipse cx="120" cy="156" rx="7.5" ry="11" fill="#2b2230" />
             <ellipse cx="120" cy="157" rx="5.5" ry="8.5" fill={`url(#hollow-glow-${uid})`} />
             <g transform="translate(88, 198)">
-              <rect x="-1.5" y="0" width="3" height="5" rx="1" fill="#fde68a" />
-              <path d="M-5 1 C-5 -4, 5 -4, 5 1 Z" fill="#f59e0b" />
-              <circle cx="-1.5" cy="-1" r="0.8" fill="#fef3c7" />
-              <circle cx="2" cy="-0.5" r="0.7" fill="#fef3c7" />
+              <rect x="-1.5" y="0" width="3" height="5" rx="1" fill="#f4dba6" />
+              <path d="M-5 1 C-5 -4, 5 -4, 5 1 Z" fill="#f5a97f" />
+              <circle cx="-1.5" cy="-1" r="0.8" fill="#f9efd6" />
+              <circle cx="2" cy="-0.5" r="0.7" fill="#f9efd6" />
             </g>
             <g transform="translate(154, 200) scale(0.85)">
-              <rect x="-1.5" y="0" width="3" height="5" rx="1" fill="#fde68a" />
-              <path d="M-5 1 C-5 -4, 5 -4, 5 1 Z" fill="#ea580c" />
+              <rect x="-1.5" y="0" width="3" height="5" rx="1" fill="#f4dba6" />
+              <path d="M-5 1 C-5 -4, 5 -4, 5 1 Z" fill="#f5a97f" />
             </g>
             <g className="origin-[120px_95px] animate-sway-branch">
               <circle cx="76" cy="92" r="35" fill={`url(#oak-canopy-mid-${uid})`} />
@@ -416,24 +455,24 @@ const DetailedPlantSVG = ({ stageKey = 'sprout', isFocusing = false, isPaused = 
               <circle cx="92" cy="98" r="31" fill={`url(#oak-canopy-sun-${uid})`} />
               <circle cx="148" cy="98" r="31" fill={`url(#oak-canopy-mid-${uid})`} />
               <circle cx="120" cy="88" r="36" fill={`url(#oak-canopy-sun-${uid})`} />
-              <path d="M62 84 Q70 76 80 82 M154 78 Q166 72 174 82 M104 42 Q120 34 136 42 M84 108 Q96 102 108 108" stroke="#bef264" strokeWidth="2" strokeLinecap="round" opacity="0.55" />
+              <path d="M62 84 Q70 76 80 82 M154 78 Q166 72 174 82 M104 42 Q120 34 136 42 M84 108 Q96 102 108 108" stroke="#c8e8a0" strokeWidth="2" strokeLinecap="round" opacity="0.55" />
               {[
                 { x: 74, y: 108 }, { x: 162, y: 106 }, { x: 102, y: 74 }, { x: 142, y: 78 }, { x: 120, y: 56 }
               ].map((ac, idx) => (
                 <g key={idx} transform={`translate(${ac.x}, ${ac.y})`}>
-                  <ellipse cx="0" cy="3" rx="3.8" ry="5" fill="#fbbf24" />
-                  <ellipse cx="-1" cy="2.5" rx="1.2" ry="2.5" fill="#fef08a" opacity="0.8" />
-                  <path d="M-4.5 1 C-4.5 -2.5, 4.5 -2.5, 4.5 1 Z" fill="#78350f" />
-                  <line x1="0" y1="-2" x2="0" y2="-4.5" stroke="#78350f" strokeWidth="1.2" />
+                  <ellipse cx="0" cy="3" rx="3.8" ry="5" fill="#eed49f" />
+                  <ellipse cx="-1" cy="2.5" rx="1.2" ry="2.5" fill="#f9e8c0" opacity="0.8" />
+                  <path d="M-4.5 1 C-4.5 -2.5, 4.5 -2.5, 4.5 1 Z" fill="#8a5a44" />
+                  <line x1="0" y1="-2" x2="0" y2="-4.5" stroke="#8a5a44" strokeWidth="1.2" />
                 </g>
               ))}
             </g>
             {!isWithered && (
               <g className="animate-float-pollen">
-                <ellipse cx="52" cy="138" rx="4" ry="2" transform="rotate(-25 52 138)" fill="#a3e635" opacity="0.85" />
-                <ellipse cx="186" cy="132" rx="4" ry="2" transform="rotate(30 186 132)" fill="#34d399" opacity="0.85" />
-                <circle cx="84" cy="44" r="2.2" fill="#fef08a" opacity="0.9" />
-                <circle cx="158" cy="48" r="2" fill="#fef08a" opacity="0.85" />
+                <ellipse cx="52" cy="138" rx="4" ry="2" transform="rotate(-25 52 138)" fill="#c8e8a0" opacity="0.85" />
+                <ellipse cx="186" cy="132" rx="4" ry="2" transform="rotate(30 186 132)" fill="#b7e4a8" opacity="0.85" />
+                <circle cx="84" cy="44" r="2.2" fill="#f9e8c0" opacity="0.9" />
+                <circle cx="158" cy="48" r="2" fill="#f9e8c0" opacity="0.85" />
               </g>
             )}
           </g>
@@ -441,10 +480,10 @@ const DetailedPlantSVG = ({ stageKey = 'sprout', isFocusing = false, isPaused = 
 
         {isFocusing && !isPaused && !isWithered && (
           <g className="animate-float-pollen">
-            <circle cx="76" cy="146" r="1.8" fill="#a7f3d0" opacity="0.75" />
-            <circle cx="164" cy="138" r="2.2" fill="#fde047" opacity="0.8" />
+            <circle cx="76" cy="146" r="1.8" fill="#dcf3d3" opacity="0.75" />
+            <circle cx="164" cy="138" r="2.2" fill="#f4dba6" opacity="0.8" />
             <circle cx="112" cy="68" r="1.6" fill="#ffffff" opacity="0.7" />
-            <circle cx="136" cy="92" r="2" fill="#6ee7b7" opacity="0.75" />
+            <circle cx="136" cy="92" r="2" fill="#cdeec2" opacity="0.75" />
           </g>
         )}
       </svg>
@@ -461,9 +500,9 @@ const PlantArtwork = ({ totalSeconds = 0, stageKey, isPaused = false, size = 'md
 // 4. НАЧАЛЬНЫЕ ДАННЫЕ И УТИЛИТЫ ФОРМАТИРОВАНИЯ
 // ============================================================================
 const INITIAL_MEADOWS = [
-  { id: 'meadow-science', name: 'Учёба и Наука', x: 0, y: 0, radius: 235, themeColor: '#10b981' },
-  { id: 'meadow-code', name: 'Проекты и Код', x: 560, y: -90, radius: 220, themeColor: '#8b5cf6' },
-  { id: 'meadow-life', name: 'Дом и Гармония', x: -540, y: 110, radius: 210, themeColor: '#f59e0b' }
+  { id: 'meadow-science', name: 'Учёба и Наука', x: 0, y: 0, radius: 235, themeColor: '#a6da95' },
+  { id: 'meadow-code', name: 'Проекты и Код', x: 560, y: -90, radius: 220, themeColor: '#c6a0f6' },
+  { id: 'meadow-life', name: 'Дом и Гармония', x: -540, y: 110, radius: 210, themeColor: '#f5a97f' }
 ];
 
 const INITIAL_TASKS = [
@@ -653,17 +692,17 @@ const TimerDurationPicker = ({ totalMinutes, onChangeMinutes, accent = 'emerald'
       </div>
 
       {inputMode === 'drum' ? (
-        <div className="relative flex items-center justify-center px-5 py-1 rounded-2xl bg-[#0b0e13] border border-zinc-800/80 shadow-inner">
+        <div className="relative flex items-center justify-center px-5 py-1 rounded-2xl bg-[#181926] border border-zinc-800/80 shadow-inner">
           <div className="pointer-events-none absolute left-2.5 right-2.5 top-1/2 -translate-y-1/2 h-[36px] rounded-xl bg-zinc-800/40 border border-zinc-700/40" />
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-8 rounded-t-2xl bg-gradient-to-b from-[#08090c] via-[#08090c]/80 to-transparent z-10" />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 rounded-b-2xl bg-gradient-to-t from-[#08090c] via-[#08090c]/80 to-transparent z-10" />
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-8 rounded-t-2xl bg-gradient-to-b from-[#181926] via-[#181926]/80 to-transparent z-10" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 rounded-b-2xl bg-gradient-to-t from-[#181926] via-[#181926]/80 to-transparent z-10" />
 
           <DrumWheelColumn values={hourValues} selectedValue={hours} onChange={(newH) => applyHoursAndMinutes(newH, minutes)} unitLabel="ч" accent={accent} />
           <div className="text-zinc-500 font-mono text-lg pb-0.5 px-1 z-20">:</div>
           <DrumWheelColumn values={minuteValues} selectedValue={minutes} onChange={(newM) => applyHoursAndMinutes(hours, newM)} unitLabel="мин" accent={accent} />
         </div>
       ) : (
-        <div className="flex flex-col items-center gap-2 bg-[#0b0e13] border border-zinc-800/80 rounded-2xl px-5 py-3.5">
+        <div className="flex flex-col items-center gap-2 bg-[#181926] border border-zinc-800/80 rounded-2xl px-5 py-3.5">
           <div className="flex items-center gap-2 font-mono">
             <div className="flex flex-col items-center">
               <input
@@ -722,6 +761,11 @@ const CartoonGardenWorld = ({
   const containerRef = useRef(null);
 
   const [isNight, setIsNight] = useState(false);
+  // Ночной режим сада затемняет и фон страницы (аврору) — через класс на body
+  useEffect(() => {
+    document.body.classList.toggle('night', isNight);
+    return () => document.body.classList.remove('night');
+  }, [isNight]);
   const [zoom, setZoom] = useState(1.0);
   const [nearbyPlant, setNearbyPlant] = useState(null);
   const [hoveredPlant, setHoveredPlant] = useState(null);
@@ -734,7 +778,7 @@ const CartoonGardenWorld = ({
     keys: {},
     mouseScreen: { x: -9999, y: -9999 },
     clickRipples: [],
-    particles: Array.from({ length: 40 }, () => ({
+    particles: Array.from({ length: 55 }, () => ({
       x: (Math.random() - 0.5) * 1800,
       y: (Math.random() - 0.5) * 1000,
       size: 2 + Math.random() * 3,
@@ -781,7 +825,7 @@ const CartoonGardenWorld = ({
               targetY: info.y ?? 105,
               facing: info.facing ?? 1,
               walkPhase: 0,
-              coatColor: info.coatColor || '#7c3aed'
+              coatColor: info.coatColor || '#a07ee0'
             };
           }
         });
@@ -799,7 +843,7 @@ const CartoonGardenWorld = ({
             targetY: payload.y,
             facing: payload.facing || 1,
             walkPhase: 0,
-            coatColor: payload.coatColor || '#7c3aed'
+            coatColor: payload.coatColor || '#a07ee0'
           };
         } else {
           existing.targetX = payload.x;
@@ -817,7 +861,7 @@ const CartoonGardenWorld = ({
             x: Math.round(p.x),
             y: Math.round(p.y),
             facing: p.facing,
-            coatColor: '#6366f1'
+            coatColor: '#8aadf4'
           });
         }
       });
@@ -839,7 +883,7 @@ const CartoonGardenWorld = ({
             x: Math.round(p.x),
             y: Math.round(p.y),
             facing: p.facing,
-            coatColor: '#6366f1'
+            coatColor: '#8aadf4'
           }
         });
       }
@@ -935,18 +979,18 @@ const CartoonGardenWorld = ({
     ctx.save();
     ctx.translate(x, y);
 
-    ctx.fillStyle = isNightMode ? 'rgba(3, 7, 14, 0.62)' : 'rgba(10, 36, 22, 0.34)';
+    ctx.fillStyle = isNightMode ? 'rgba(24, 25, 38, 0.62)' : 'rgba(24, 40, 32, 0.34)';
     ctx.beginPath();
     ctx.ellipse(0, 5, 25 * s, 9.5 * s, 0, 0, Math.PI * 2);
     ctx.fill();
 
     if (stage.id !== 'lotus') {
-      ctx.fillStyle = isNightMode ? '#064e3b' : '#047857';
+      ctx.fillStyle = isNightMode ? '#3b5e36' : '#5a9450';
       ctx.beginPath();
       ctx.ellipse(0, 2, 16 * s, 5.5 * s, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = '#475569';
+      ctx.fillStyle = '#5b6078';
       ctx.beginPath();
       ctx.ellipse(-10 * s, 4, 3 * s, 1.8 * s, 0, 0, Math.PI * 2);
       ctx.ellipse(11 * s, 3, 2.5 * s, 1.5 * s, 0, 0, Math.PI * 2);
@@ -955,9 +999,9 @@ const CartoonGardenWorld = ({
 
     if (isHighlighted) {
       ctx.save();
-      ctx.strokeStyle = '#fde047';
+      ctx.strokeStyle = '#f4dba6';
       ctx.lineWidth = 2.5;
-      ctx.shadowColor = '#fde047';
+      ctx.shadowColor = '#f4dba6';
       ctx.shadowBlur = 14;
       ctx.beginPath();
       ctx.ellipse(0, 3, 30 * s, 12.5 * s, 0, 0, Math.PI * 2);
@@ -966,7 +1010,7 @@ const CartoonGardenWorld = ({
     }
 
     if (status === 'active') {
-      ctx.strokeStyle = 'rgba(52, 211, 153, 0.7)';
+      ctx.strokeStyle = 'rgba(166, 218, 149, 0.7)';
       ctx.setLineDash([4, 4]);
       ctx.lineWidth = 1.8;
       ctx.beginPath();
@@ -988,7 +1032,7 @@ const CartoonGardenWorld = ({
 
     if (stage.id === 'sprout') {
       const tipX = sway * 0.45;
-      ctx.strokeStyle = '#34d399';
+      ctx.strokeStyle = '#b7e4a8';
       ctx.lineWidth = 3.5;
       ctx.lineCap = 'round';
       ctx.beginPath();
@@ -996,11 +1040,11 @@ const CartoonGardenWorld = ({
       ctx.quadraticCurveTo(-3, -13, tipX, -26);
       ctx.stroke();
 
-      ctx.fillStyle = '#059669';
+      ctx.fillStyle = '#7ab36a';
       ctx.beginPath();
       ctx.ellipse(-8 + tipX, -23, 8.5, 4.5, -0.35, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = '#6ee7b7';
+      ctx.fillStyle = '#cdeec2';
       ctx.beginPath();
       ctx.ellipse(8 + tipX, -26, 9.5, 4.8, 0.3, 0, Math.PI * 2);
       ctx.fill();
@@ -1009,7 +1053,7 @@ const CartoonGardenWorld = ({
       stems.forEach((st, idx) => {
         const topX = st.dx + sway * (0.35 + idx * 0.12);
         const topY = st.dy - st.h;
-        ctx.strokeStyle = idx === 2 ? '#10b981' : '#059669';
+        ctx.strokeStyle = idx === 2 ? '#a6da95' : '#7ab36a';
         ctx.lineWidth = idx === 2 ? 3 : 2.3;
         ctx.beginPath();
         ctx.moveTo(st.dx * 0.5, st.dy);
@@ -1019,7 +1063,7 @@ const CartoonGardenWorld = ({
         const r = idx === 2 ? 6.8 : 5;
         for (let i = 0; i < st.leaves; i++) {
           const ang = (i * Math.PI * 2) / st.leaves + 0.2;
-          ctx.fillStyle = i % 2 === 0 ? '#34d399' : '#10b981';
+          ctx.fillStyle = i % 2 === 0 ? '#b7e4a8' : '#a6da95';
           ctx.beginPath();
           ctx.arc(topX + Math.cos(ang) * (r * 0.88), topY + Math.sin(ang) * (r * 0.88), r * 0.72, 0, Math.PI * 2);
           ctx.fill();
@@ -1028,25 +1072,25 @@ const CartoonGardenWorld = ({
     } else if (stage.id === 'buttercup') {
       const topX = sway * 0.65;
       const topY = -44;
-      ctx.fillStyle = '#047857';
+      ctx.fillStyle = '#5a9450';
       ctx.beginPath();
       ctx.ellipse(-12, -6, 11, 5, -0.35, 0, Math.PI * 2);
       ctx.ellipse(12, -6, 11, 5, 0.35, 0, Math.PI * 2);
       ctx.fill();
 
       const budX = 16 + secondarySway * 0.5;
-      ctx.strokeStyle = '#059669';
+      ctx.strokeStyle = '#7ab36a';
       ctx.lineWidth = 2.5;
       ctx.beginPath();
       ctx.moveTo(0, -10);
       ctx.quadraticCurveTo(10, -18, budX, -29);
       ctx.stroke();
-      ctx.fillStyle = '#fbbf24';
+      ctx.fillStyle = '#eed49f';
       ctx.beginPath();
       ctx.ellipse(budX, -32, 4.5, 6.5, 0.3, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.strokeStyle = '#10b981';
+      ctx.strokeStyle = '#a6da95';
       ctx.lineWidth = 3.6;
       ctx.beginPath();
       ctx.moveTo(0, 1);
@@ -1055,20 +1099,20 @@ const CartoonGardenWorld = ({
 
       for (let a = 0; a < 6; a++) {
         const ang = (a * Math.PI) / 3 + time * 0.25;
-        ctx.fillStyle = a % 2 === 0 ? '#f59e0b' : '#fbbf24';
+        ctx.fillStyle = a % 2 === 0 ? '#f5a97f' : '#eed49f';
         ctx.beginPath();
         ctx.arc(topX + Math.cos(ang) * 10, topY + Math.sin(ang) * 10, 6.8, 0, Math.PI * 2);
         ctx.fill();
       }
     } else if (stage.id === 'lotus') {
       const rippleR = 28 + Math.sin(time * 2.4 + seed) * 2.5;
-      ctx.strokeStyle = 'rgba(103, 232, 249, 0.4)';
+      ctx.strokeStyle = 'rgba(145, 215, 227, 0.4)';
       ctx.lineWidth = 1.4;
       ctx.beginPath();
       ctx.ellipse(0, 3, rippleR, rippleR * 0.38, 0, 0, Math.PI * 2);
       ctx.stroke();
 
-      ctx.fillStyle = '#047857';
+      ctx.fillStyle = '#5a9450';
       ctx.beginPath();
       ctx.ellipse(0, 2, 23, 9, 0, 0.2, Math.PI * 1.9);
       ctx.lineTo(0, 2);
@@ -1079,7 +1123,7 @@ const CartoonGardenWorld = ({
         ctx.save();
         ctx.translate(lotusSway, -2);
         ctx.rotate(ang);
-        ctx.fillStyle = '#db2777';
+        ctx.fillStyle = '#e08fc0';
         ctx.beginPath();
         ctx.moveTo(0, 0);
         ctx.quadraticCurveTo(-11, -18, 0, -34);
@@ -1092,7 +1136,7 @@ const CartoonGardenWorld = ({
         ctx.save();
         ctx.translate(lotusSway, -1);
         ctx.rotate(ang);
-        ctx.fillStyle = '#f472b6';
+        ctx.fillStyle = '#f5bde6';
         ctx.beginPath();
         ctx.moveTo(0, 0);
         ctx.quadraticCurveTo(-9, -14, 0, -27);
@@ -1101,12 +1145,12 @@ const CartoonGardenWorld = ({
         ctx.restore();
       });
 
-      ctx.fillStyle = '#fde047';
+      ctx.fillStyle = '#f4dba6';
       ctx.beginPath();
       ctx.ellipse(lotusSway, -14, 7, 4.5, 0, 0, Math.PI * 2);
       ctx.fill();
     } else if (stage.id === 'pine') {
-      ctx.fillStyle = '#5c2d16';
+      ctx.fillStyle = '#6a4a3e';
       ctx.beginPath();
       ctx.moveTo(-9, 4);
       ctx.lineTo(-4, -55);
@@ -1115,11 +1159,11 @@ const CartoonGardenWorld = ({
       ctx.fill();
 
       const tiers = [
-        { y: -18, w: 40, h: 28, color: '#064e3b' },
-        { y: -35, w: 34, h: 26, color: '#047857' },
-        { y: -52, w: 28, h: 25, color: '#059669' },
-        { y: -68, w: 21, h: 22, color: '#10b981' },
-        { y: -82, w: 14, h: 19, color: '#34d399' }
+        { y: -18, w: 40, h: 28, color: '#3b5e36' },
+        { y: -35, w: 34, h: 26, color: '#5a9450' },
+        { y: -52, w: 28, h: 25, color: '#7ab36a' },
+        { y: -68, w: 21, h: 22, color: '#a6da95' },
+        { y: -82, w: 14, h: 19, color: '#b7e4a8' }
       ];
 
       tiers.forEach((t, idx) => {
@@ -1134,14 +1178,14 @@ const CartoonGardenWorld = ({
         ctx.fill();
       });
     } else {
-      ctx.fillStyle = '#064e3b';
+      ctx.fillStyle = '#3b5e36';
       ctx.beginPath();
       ctx.arc(-38 + sway * 0.45, -72, 26, 0, Math.PI * 2);
       ctx.arc(38 + sway * 0.45, -72, 26, 0, Math.PI * 2);
       ctx.arc(0 + sway * 0.55, -104, 30, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = '#5c2d16';
+      ctx.fillStyle = '#6a4a3e';
       ctx.beginPath();
       ctx.moveTo(-20, 5);
       ctx.quadraticCurveTo(-11, -18, -11, -56);
@@ -1149,20 +1193,20 @@ const CartoonGardenWorld = ({
       ctx.quadraticCurveTo(11, -18, 20, 5);
       ctx.fill();
 
-      ctx.fillStyle = '#271203';
+      ctx.fillStyle = '#2b2230';
       ctx.beginPath();
       ctx.ellipse(0, -24, 4.8, 7, 0, 0, Math.PI * 2);
       ctx.fill();
 
       const canopyClusters = [
-        { cx: -32, cy: -74, r: 25, color: '#047857', sFactor: 0.5 },
-        { cx: 32, cy: -74, r: 25, color: '#047857', sFactor: 0.5 },
-        { cx: -20, cy: -95, r: 27, color: '#059669', sFactor: 0.65 },
-        { cx: 20, cy: -95, r: 27, color: '#059669', sFactor: 0.65 },
-        { cx: -16, cy: -72, r: 22, color: '#10b981', sFactor: 0.55 },
-        { cx: 16, cy: -72, r: 22, color: '#059669', sFactor: 0.55 },
-        { cx: 0, cy: -108, r: 30, color: '#10b981', sFactor: 0.75 },
-        { cx: 0, cy: -82, r: 26, color: '#34d399', sFactor: 0.6 }
+        { cx: -32, cy: -74, r: 25, color: '#5a9450', sFactor: 0.5 },
+        { cx: 32, cy: -74, r: 25, color: '#5a9450', sFactor: 0.5 },
+        { cx: -20, cy: -95, r: 27, color: '#7ab36a', sFactor: 0.65 },
+        { cx: 20, cy: -95, r: 27, color: '#7ab36a', sFactor: 0.65 },
+        { cx: -16, cy: -72, r: 22, color: '#a6da95', sFactor: 0.55 },
+        { cx: 16, cy: -72, r: 22, color: '#7ab36a', sFactor: 0.55 },
+        { cx: 0, cy: -108, r: 30, color: '#a6da95', sFactor: 0.75 },
+        { cx: 0, cy: -82, r: 26, color: '#b7e4a8', sFactor: 0.6 }
       ];
       canopyClusters.forEach((c, i) => {
         const clusterOffset = sway * c.sFactor + (i % 2 === 0 ? secondarySway * 0.25 : -secondarySway * 0.25);
@@ -1175,7 +1219,7 @@ const CartoonGardenWorld = ({
 
     // Золотая метка совместного (Co-op) дерева
     if (plant.shareInviteCode || (plant.contributions && plant.contributions.length > 1)) {
-      ctx.fillStyle = '#fbbf24';
+      ctx.fillStyle = '#eed49f';
       ctx.beginPath();
       ctx.arc(0, -45 * s, 4.5, 0, Math.PI * 2);
       ctx.fill();
@@ -1197,15 +1241,15 @@ const CartoonGardenWorld = ({
 
     if (isNightMode) {
       const lanternGrad = ctx.createRadialGradient(0, -18, 4, 0, -18, 95);
-      lanternGrad.addColorStop(0, 'rgba(253, 224, 71, 0.28)');
-      lanternGrad.addColorStop(1, 'rgba(253, 224, 71, 0)');
+      lanternGrad.addColorStop(0, 'rgba(238, 212, 159, 0.28)');
+      lanternGrad.addColorStop(1, 'rgba(238, 212, 159, 0)');
       ctx.fillStyle = lanternGrad;
       ctx.beginPath();
       ctx.arc(0, -18, 95, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
     ctx.beginPath();
     ctx.ellipse(0, 3, 14, 6, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -1214,7 +1258,7 @@ const CartoonGardenWorld = ({
     ctx.translate(0, -bob);
     ctx.scale(facing, 1);
 
-    ctx.fillStyle = isRemote ? (charObj.coatColor || '#6366f1') : '#0f766e';
+    ctx.fillStyle = isRemote ? (charObj.coatColor || '#8aadf4') : '#8bd5ca';
     ctx.beginPath();
     ctx.moveTo(-11, -5);
     ctx.quadraticCurveTo(-9, -24, 0, -28);
@@ -1222,12 +1266,12 @@ const CartoonGardenWorld = ({
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = '#fde68a';
+    ctx.fillStyle = '#f4dba6';
     ctx.beginPath();
     ctx.arc(0, -33, 8.5, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = isRemote ? '#8b5cf6' : '#d97706';
+    ctx.fillStyle = isRemote ? '#c6a0f6' : '#f5a97f';
     ctx.beginPath();
     ctx.ellipse(0, -39, 15, 4.5, -0.05, 0, Math.PI * 2);
     ctx.fill();
@@ -1237,15 +1281,15 @@ const CartoonGardenWorld = ({
     if (label) {
       ctx.font = '600 11px Inter, system-ui, sans-serif';
       const tw = ctx.measureText(label).width + 14;
-      ctx.fillStyle = isRemote ? 'rgba(49, 46, 129, 0.88)' : 'rgba(6, 78, 59, 0.88)';
-      ctx.strokeStyle = isRemote ? 'rgba(165, 180, 252, 0.5)' : 'rgba(110, 231, 183, 0.5)';
+      ctx.fillStyle = isRemote ? 'rgba(54, 58, 79, 0.88)' : 'rgba(47, 74, 45, 0.88)';
+      ctx.strokeStyle = isRemote ? 'rgba(138, 173, 244, 0.5)' : 'rgba(183, 228, 168, 0.5)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.roundRect(-tw / 2, -64 - bob, tw, 18, 6);
       ctx.fill();
       ctx.stroke();
 
-      ctx.fillStyle = '#f8fafc';
+      ctx.fillStyle = '#cad3f5';
       ctx.textAlign = 'center';
       ctx.fillText(label, 0, -51 - bob);
     }
@@ -1359,16 +1403,17 @@ const CartoonGardenWorld = ({
       }
       setHoveredPlant((prev) => (prev?.id !== hovP?.id ? hovP : prev));
 
+      ctx.clearRect(0, 0, width, height);
       const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
       if (isNight) {
-        bgGrad.addColorStop(0, '#060d18');
-        bgGrad.addColorStop(1, '#0b192c');
+        addEasedStops(bgGrad, '#141622', '#1a1d2e');
       } else {
-        bgGrad.addColorStop(0, '#0f293a');
-        bgGrad.addColorStop(1, '#13384c');
+        addEasedStops(bgGrad, '#1d2a40', '#25344f');
       }
+      ctx.globalAlpha = isNight ? 0.82 : 0.62;
       ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, width, height);
+      ctx.globalAlpha = 1;
 
       ctx.save();
       ctx.translate(width / 2, height / 2);
@@ -1379,7 +1424,7 @@ const CartoonGardenWorld = ({
         const mainMeadow = meadows[0];
         for (let i = 1; i < meadows.length; i++) {
           const targetM = meadows[i];
-          ctx.strokeStyle = isNight ? '#3f2e21' : '#78350f';
+          ctx.strokeStyle = isNight ? '#4a3a3a' : '#8a5a44';
           ctx.lineWidth = 34;
           ctx.lineCap = 'round';
           ctx.beginPath();
@@ -1389,32 +1434,71 @@ const CartoonGardenWorld = ({
         }
       }
 
-      meadows.forEach((meadow) => {
+      meadows.forEach((meadow, mi) => {
         const r = meadow.radius || 215;
         const ry = r * 0.78;
-        ctx.fillStyle = isNight ? '#1e293b' : '#d6d3d1';
+        const squash = ry / r;
+
+        // Мелководье: мягкое свечение воды вокруг острова
+        ctx.save();
+        ctx.translate(meadow.x, meadow.y + 14);
+        ctx.scale(1, squash);
+        const shoreGrad = ctx.createRadialGradient(0, 0, r * 0.8, 0, 0, r * 1.55);
+        const shoreRgb = isNight ? '125, 196, 228' : '145, 215, 227';
+        [[0, 0.2], [0.25, 0.13], [0.5, 0.07], [0.75, 0.025], [1, 0]].forEach(([p, v]) => shoreGrad.addColorStop(p, 'rgba(' + shoreRgb + ', ' + (isNight ? v * 0.35 : v * 0.55) + ')'));
+        ctx.fillStyle = shoreGrad;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 1.55, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // Толщина острова (бок скалы) и светлый край
+        ctx.fillStyle = isNight ? '#1e2030' : '#5b6078';
+        ctx.beginPath();
+        ctx.ellipse(meadow.x, meadow.y + 17, r + 10, ry + 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = isNight ? '#363a4f' : '#939ab7';
         ctx.beginPath();
         ctx.ellipse(meadow.x, meadow.y + 8, r + 10, ry + 8, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        const grassGrad = ctx.createRadialGradient(meadow.x, meadow.y - 20, 20, meadow.x, meadow.y, r);
+        // Градиент считаем в «сплющенных» координатах, чтобы он был овальным, как сам остров
+        ctx.save();
+        ctx.translate(meadow.x, meadow.y);
+        ctx.scale(1, squash);
+        const grassGrad = ctx.createRadialGradient(0, -24, 10, 0, 0, r);
         if (isNight) {
-          grassGrad.addColorStop(0, '#0f2e26');
-          grassGrad.addColorStop(1, '#081c17');
+          addEasedStops(grassGrad, '#2d4a37', '#1b2e24');
         } else {
-          grassGrad.addColorStop(0, '#1f513b');
-          grassGrad.addColorStop(1, '#133828');
+          addEasedStops(grassGrad, '#44693f', '#2a4530');
         }
         ctx.fillStyle = grassGrad;
         ctx.beginPath();
-        ctx.ellipse(meadow.x, meadow.y, r, ry, 0, 0, Math.PI * 2);
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
         ctx.fill();
+        ctx.restore();
+
+        // Травинки и цветочки (постоянные для каждой поляны, не прыгают при перерисовке)
+        let seed = (mi + 1) * 9301 + 49297;
+        const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+        for (let k = 0; k < 12; k++) {
+          const ang = rnd() * Math.PI * 2;
+          const dist = Math.sqrt(rnd()) * 0.9;
+          const tx = meadow.x + Math.cos(ang) * r * dist;
+          const ty = meadow.y + Math.sin(ang) * ry * dist;
+          ctx.fillStyle = ['#f5bde6', '#eed49f', '#c6a0f6', '#91d7e3'][Math.floor(rnd() * 4)];
+          ctx.globalAlpha = isNight ? 0.4 : 0.7;
+          ctx.beginPath();
+          ctx.arc(tx, ty, 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
       });
 
       state.clickRipples = state.clickRipples.filter((rp) => rp.age < 1.0);
       state.clickRipples.forEach((rp) => {
         rp.age += dt * 1.8;
-        ctx.strokeStyle = `rgba(110, 231, 183, ${1 - rp.age})`;
+        ctx.strokeStyle = `rgba(183, 228, 168, ${1 - rp.age})`;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.ellipse(rp.x, rp.y, 18 * rp.age, 9 * rp.age, 0, 0, Math.PI * 2);
@@ -1429,16 +1513,16 @@ const CartoonGardenWorld = ({
           draw: () => {
             ctx.save();
             ctx.translate(meadow.x, meadow.y - (meadow.radius || 215) * 0.72);
-            ctx.fillStyle = '#5c2d16';
+            ctx.fillStyle = '#6a4a3e';
             ctx.fillRect(-3, -22, 6, 24);
-            ctx.fillStyle = isNight ? '#1e293b' : '#292524';
-            ctx.strokeStyle = '#78350f';
+            ctx.fillStyle = isNight ? '#363a4f' : '#24273a';
+            ctx.strokeStyle = '#8a5a44';
             ctx.lineWidth = 2;
             ctx.beginPath();
             ctx.roundRect(-88, -46, 176, 28, 8);
             ctx.fill();
             ctx.stroke();
-            ctx.fillStyle = '#f8fafc';
+            ctx.fillStyle = '#cad3f5';
             ctx.font = '600 12px Inter, system-ui, sans-serif';
             ctx.textAlign = 'center';
             ctx.fillText(`${meadow.name} (${count})`, 0, -28);
@@ -1482,34 +1566,40 @@ const CartoonGardenWorld = ({
         const subText = `${activePromptPlant.stage.name} • ${formatDurationRu(activePromptPlant.totalSeconds)} [Клик]`;
         ctx.font = '500 12px Inter, system-ui, sans-serif';
         const w = Math.max(ctx.measureText(titleText).width, ctx.measureText(subText).width) + 28;
-        ctx.fillStyle = 'rgba(11, 15, 20, 0.92)';
-        ctx.strokeStyle = 'rgba(52, 211, 153, 0.5)';
+        ctx.fillStyle = 'rgba(30, 32, 48, 0.92)';
+        ctx.strokeStyle = 'rgba(166, 218, 149, 0.5)';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.roundRect(-w / 2, -42, w, 40, 10);
         ctx.fill();
         ctx.stroke();
-        ctx.fillStyle = '#f8fafc';
+        ctx.fillStyle = '#cad3f5';
         ctx.textAlign = 'center';
         ctx.fillText(titleText, 0, -25);
-        ctx.fillStyle = '#6ee7b7';
+        ctx.fillStyle = '#cdeec2';
         ctx.font = '500 10.5px JetBrains Mono, monospace';
         ctx.fillText(subText, 0, -10);
         ctx.restore();
       }
 
       state.particles.forEach((pt) => {
-        pt.x += pt.speedX * dt;
-        pt.y += pt.speedY * dt;
+        // Светлячок блуждает: плавное покачивание вместо прямой линии
+        pt.x += (pt.speedX * 0.4 + Math.sin(time * 0.8 + pt.phase) * 10) * dt;
+        pt.y += (pt.speedY * 0.5 + Math.cos(time * 0.6 + pt.phase) * 5) * dt;
         if (pt.y < camera.y - 500) pt.y = camera.y + 500;
         if (pt.x < camera.x - 900) pt.x = camera.x + 900;
         if (pt.x > camera.x + 900) pt.x = camera.x - 900;
-        const alpha = 0.35 + Math.sin(time * 3 + pt.phase) * 0.3;
-        ctx.fillStyle = isNight ? `rgba(253, 224, 71, ${alpha})` : `rgba(167, 243, 208, ${alpha * 0.7})`;
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
-        ctx.fill();
+        // Плавно появляется и гаснет у краёв, мерцает в своём ритме
+        const edge = Math.min(1, Math.max(0, (pt.y - (camera.y - 500)) / 120)) * Math.min(1, Math.max(0, (camera.y + 500 - pt.y) / 120));
+        const blink = 0.5 + 0.5 * Math.sin(time * (1.1 + (pt.phase % 1)) + pt.phase);
+        const alpha = edge * (0.12 + 0.88 * blink * blink);
+        if (alpha < 0.02) return;
+        const sprite = getGlowSprite(isNight ? '238, 212, 159' : '205, 238, 194');
+        const d = pt.size * 7;
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(sprite, pt.x - d / 2, pt.y - d / 2, d, d);
       });
+      ctx.globalAlpha = 1;
 
       ctx.restore();
       ctx.restore();
@@ -1521,9 +1611,9 @@ const CartoonGardenWorld = ({
   }, [meadows, placedPlants, isNight, zoom, nearbyPlant, hoveredPlant, currentProfile?.username]);
 
   return (
-    <div ref={containerRef} className="relative w-full h-[calc(100vh-6rem)] min-h-[540px] rounded-3xl overflow-hidden border border-zinc-800/80 shadow-2xl bg-[#08121a] select-none">
-      <canvas ref={canvasRef} onPointerDown={handleCanvasPointerDown} onPointerMove={handleCanvasPointerMove} className="w-full h-full block cursor-default" />
-      <div className="absolute top-4 left-4 right-4 flex flex-wrap items-center justify-between gap-3 pointer-events-none">
+    <div ref={containerRef} className="relative w-screen left-1/2 -translate-x-1/2 h-[calc(100vh-6rem)] min-h-[540px] select-none">
+      <canvas ref={canvasRef} onPointerDown={handleCanvasPointerDown} onPointerMove={handleCanvasPointerMove} className="w-full h-full block cursor-default garden-canvas" />
+      <div className="absolute top-4 left-4 right-4 mx-auto max-w-[1392px] flex flex-wrap items-center justify-between gap-3 pointer-events-none">
         <div className="flex flex-wrap items-center gap-1.5 bg-zinc-950/80 backdrop-blur-md border border-zinc-800/80 p-1.5 rounded-2xl pointer-events-auto">
           {meadows.map((m) => (
             <div key={m.id} className="inline-flex items-center rounded-xl hover:bg-zinc-800/80 transition-colors">
@@ -1576,7 +1666,7 @@ const CartoonGardenWorld = ({
           </button>
         </div>
       </div>
-      <div className="absolute bottom-4 left-4 right-4 flex flex-wrap items-center justify-between gap-3 pointer-events-none">
+      <div className="absolute bottom-4 left-4 right-4 mx-auto max-w-[1392px] flex flex-wrap items-center justify-between gap-3 pointer-events-none">
         <div className="bg-zinc-950/80 backdrop-blur-md border border-zinc-800/80 px-4 py-2 rounded-2xl text-xs text-zinc-400 flex items-center gap-3">
           <span>Ходьба: <strong className="text-zinc-200 font-mono">WASD / Стрелки</strong> или <strong className="text-zinc-200">Клик по карте</strong></span>
         </div>
@@ -2112,7 +2202,8 @@ const App = () => {
     : profile.garden_code;
 
   return (
-    <div className="min-h-screen bg-[#08090c] text-zinc-100 font-sans selection:bg-emerald-500/20 flex flex-col justify-between">
+    <div className="min-h-screen text-zinc-100 font-sans selection:bg-emerald-500/20 flex flex-col justify-between">
+      <div className="aurora" data-tab={activeTab} aria-hidden="true"><i /><i /><i /></div>
       <style>{`.no-scrollbar::-webkit-scrollbar { display: none; } .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }`}</style>
       <style>{`
         @keyframes swayStem { 0%, 100% { transform: rotate(-1.1deg); } 50% { transform: rotate(1.1deg); } }
@@ -2331,11 +2422,11 @@ const App = () => {
         {activeTab === 'rest' && (
           <div className="flex flex-col items-center justify-center text-center my-auto">
             <div className="relative h-56 w-56 flex items-center justify-center my-2 select-none">
-              <div className="absolute w-48 h-48 rounded-full bg-amber-400/15 blur-3xl animate-aurora-pulse pointer-events-none" />
-              <div className="absolute w-36 h-36 rounded-full bg-indigo-400/15 blur-2xl animate-aurora-pulse pointer-events-none" style={{ animationDelay: '1.6s' }} />
+              <div className="absolute w-64 h-64 animate-aurora-pulse pointer-events-none" style={{ background: softGlow('#eed49f', 0.45) }} />
+              <div className="absolute w-48 h-48 animate-aurora-pulse pointer-events-none" style={{ animationDelay: '1.6s', background: softGlow('#8aadf4', 0.3) }} />
               <div className="relative z-10 animate-star-oscillate" style={{ opacity: restStatus === 'paused' ? 0.45 : 1, transition: 'opacity 0.5s ease' }}>
                 <svg width="104" height="104" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-[0_0_28px_rgba(251,191,36,0.55)]">
-                  <path d="M60 14 C62 45, 75 58, 106 60 C75 62, 62 75, 60 106 C58 75, 45 62, 14 60 C45 58, 58 45, 60 14 Z" fill="#fef3c7" />
+                  <path d="M60 14 C62 45, 75 58, 106 60 C75 62, 62 75, 60 106 C58 75, 45 62, 14 60 C45 58, 58 45, 60 14 Z" fill="#f9efd6" />
                   <path d="M60 34 C61 51, 69 59, 86 60 C69 61, 61 69, 60 86 C59 69, 51 61, 34 60 C51 59, 59 51, 60 34 Z" fill="#ffffff" transform="rotate(45 60 60)" opacity="0.75" />
                 </svg>
               </div>
@@ -2388,7 +2479,7 @@ const App = () => {
                 <Sun className="w-3.5 h-3.5 stroke-[1.4]" />
                 <span className="h-[1px] w-6 bg-gradient-to-l from-transparent to-amber-300/30" />
               </div>
-              <p className="text-[11px] sm:text-xs font-light tracking-[0.14em] uppercase text-amber-100/50 max-w-md leading-relaxed">
+              <p className="text-[11px] sm:text-xs font-light tracking-[0.14em] uppercase text-amber-100/75 max-w-md leading-relaxed">
                 Растения не могут без солнца, человек не может без отдыха
               </p>
             </div>
@@ -2400,7 +2491,7 @@ const App = () => {
            ================================================================== */}
         {activeTab === 'garden' && (
           <div className="w-full space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-4 bg-[#0c0e14] p-4 rounded-2xl border border-zinc-800/80">
+            <div className="flex flex-wrap items-center justify-between gap-4 bg-zinc-950 p-4 rounded-2xl border border-zinc-800/80">
               <div className="flex items-center gap-3">
                 <span className="text-sm font-medium text-emerald-300 uppercase tracking-widest">
                   {gardenMode === 'personal'
@@ -2631,12 +2722,12 @@ const App = () => {
 {/* МОДАЛЬНОЕ ОКНО ВХОДА ЧЕРЕЗ GOOGLE */}
       {isAuthModalOpen && (
         <div
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-[#181926]/80 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={() => setIsAuthModalOpen(false)}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-[#0f151d] border border-zinc-800 rounded-3xl max-w-sm w-full p-6 space-y-5 shadow-2xl text-center"
+            className="bg-[#1e2030] border border-zinc-800 rounded-3xl max-w-sm w-full p-6 space-y-5 shadow-2xl text-center"
           >
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-medium text-zinc-100">Вход в сад Lock In</h3>
@@ -2687,8 +2778,8 @@ const App = () => {
 
       {/* МОДАЛКА ОСМОТРА РАСТЕНИЯ В САДУ */}
       {inspectedPlant && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setInspectedPlantId(null)}>
-          <div className="bg-[#0f151d] border border-zinc-800 rounded-3xl max-w-md w-full p-6 sm:p-7 space-y-6 relative shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 bg-[#181926]/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setInspectedPlantId(null)}>
+          <div className="bg-[#1e2030] border border-zinc-800 rounded-3xl max-w-md w-full p-6 sm:p-7 space-y-6 relative shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <button onClick={() => setInspectedPlantId(null)} className="absolute top-5 right-5 text-zinc-500 hover:text-zinc-200 p-1 rounded-lg transition-colors"><X className="w-4 h-4" /></button>
             <div className="flex flex-col items-center text-center pt-1">
               <PlantArtwork totalSeconds={inspectedPlant.totalSeconds} size="md" animate />
@@ -2727,8 +2818,8 @@ const App = () => {
       )}
 
       {isNewMeadowModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setIsNewMeadowModalOpen(false)}>
-          <form onSubmit={handleCreateMeadow} onClick={(e) => e.stopPropagation()} className="bg-[#0f151d] border border-zinc-800 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-[#181926]/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setIsNewMeadowModalOpen(false)}>
+          <form onSubmit={handleCreateMeadow} onClick={(e) => e.stopPropagation()} className="bg-[#1e2030] border border-zinc-800 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-medium text-zinc-100">Новая поляна в саду</h3>
               <button type="button" onClick={() => setIsNewMeadowModalOpen(false)} className="text-zinc-500 hover:text-zinc-300"><X className="w-4 h-4" /></button>
