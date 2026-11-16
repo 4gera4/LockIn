@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: #08090c;
+  color: #d4d4d4;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
