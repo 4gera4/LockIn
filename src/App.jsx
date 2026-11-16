@@ -1522,7 +1522,7 @@ const CartoonGardenWorld = ({
 
   return (
     <div ref={containerRef} className="relative w-full h-[calc(100vh-6rem)] min-h-[540px] rounded-3xl overflow-hidden border border-zinc-800/80 shadow-2xl bg-[#08121a] select-none">
-      <canvas ref={canvasRef} onPointerDown={handleCanvasPointerDown} onPointerMove={handleCanvasPointerMove} className="w-full h-full block cursor-grab active:cursor-grabbing" />
+      <canvas ref={canvasRef} onPointerDown={handleCanvasPointerDown} onPointerMove={handleCanvasPointerMove} className="w-full h-full block cursor-default" />
       <div className="absolute top-4 left-4 right-4 flex flex-wrap items-center justify-between gap-3 pointer-events-none">
         <div className="flex flex-wrap items-center gap-1.5 bg-zinc-950/80 backdrop-blur-md border border-zinc-800/80 p-1.5 rounded-2xl pointer-events-auto">
           {meadows.map((m) => (
